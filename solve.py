@@ -173,31 +173,6 @@ def ComputeEGCD(f, g, base):
         t0 = RemoveZeroTerms([(c * leading_coeff_inv) % base for c in t0])
     return s0, t0, d
 
-def ComputeAllMonicPolynomialsOfDegree(degree, base):
-    if degree <= 0:
-        return []
-
-    polynomials = []
-
-    # number of ways to pick the lower coefficients
-    total_combinations = base ** degree
-
-    for counter in range(total_combinations):
-        # Decode `counter` in base p to get the lower coefficients a0..a_{degree-1}
-        value = counter
-        lower_coeffs = []
-        for _ in range(degree):
-            # current base-p digit -> next coefficient
-            digit = value % base
-            lower_coeffs.append(digit)
-            value //= base                # move to the next digit
-
-        # Append the monic leading coefficient (1) for X^degree
-        polynomial = lower_coeffs + [1]
-        polynomials.append(polynomial)
-
-    return polynomials
-
 def IsPolynomialIrreducible(f, base):
     # Normalize f modulo p and strip leading zeros
     f = RemoveZeroTerms([c % base for c in f])
@@ -369,51 +344,64 @@ def GeneratePrimitiveElement(poly, p):
 def Normalize(poly, p):
     return RemoveZeroTerms([c % p for c in poly])
 
-def FieldMultiply(a, b, modulus_poly, p):
+def FieldMultiply(a, b, mod_poly, p):
     product = MultiplyPolynomials(a, b, p)
-    return ModPolynomial(product, modulus_poly, p)
+    return ModPolynomial(product, mod_poly, p)
 
-
-def FieldInverse(element, modulus_poly, p):
+def FieldInverse(element, mod_poly, p):
+    # Zero has no multiplicative inverse.
     if element == [0]:
         return None
-    s_coef, t_coef, gcd_poly = ComputeEGCD(element, modulus_poly, p)
+
+    # ComputeEGCD returns polynomials (s, t, d) with: s*element + t*mod_poly = d
+    s_coeffs, t_coeffs, gcd_poly = ComputeEGCD(element, mod_poly, p)
+
+    # If gcd == 1, `s` is the inverse of `element` modulo `mod_poly`.
     if gcd_poly == [1]:
-        return ModPolynomial(s_coef, modulus_poly, p)
+        return ModPolynomial(s_coeffs, mod_poly, p)
+
     return None
 
-
-def FieldDivide(numerator, denominator, modulus_poly, p):
-    inv = FieldInverse(denominator, modulus_poly, p)
+def FieldDivide(numerator, denominator, mod_poly, p):
+    inv = FieldInverse(denominator, mod_poly, p)
     if inv is None:
         return None
-    return FieldMultiply(numerator, inv, modulus_poly, p)
+    return FieldMultiply(numerator, inv, mod_poly, p)
 
-
-def FieldPower(base, exponent, modulus_poly, p):
+def FieldPower(base, exponent, mod_poly, p):
     result = [1]
-    base = Normalize(base[:], p)
+    base = Normalize(base[:], p) # Ensure coefficients are in 0..p-1 and trimmed
     e = exponent
+
+    # Binary exponentiation
     while e > 0:
         if e & 1:
-            result = FieldMultiply(result, base, modulus_poly, p)
-        base = FieldMultiply(base, base, modulus_poly, p)
-        e >>= 1
+            # If the current bit is 1, multiply result by current base
+            result = FieldMultiply(result, base, mod_poly, p)
+        # Square the base each iteration (advance to next bit)
+        base = FieldMultiply(base, base, mod_poly, p)
+        e >>= 1  # Shift to process the next bit
     return result
 
 
 def FactorizePolynomial(n):
     factors = []
+    # Start trial division with 2, then continue with odd numbers only.
     d = 2
     while d * d <= n:
         if n % d == 0:
+            # We found a prime factor d; record it once.
             factors.append(d)
+
+            # Remove all copies of d from n so we don't report it again.
             while n % d == 0:
                 n //= d
-        d += 1 if d == 2 else 2  # test 2, then only odds
+        # Increment: after testing 2, skip even numbers
+        d += 1 if d == 2 else 2
     if n > 1:
         factors.append(n)
     return factors
+
 
 def solve_exercise(exercise_location: str, answer_location: str):
     with open(exercise_location, "r") as exercise_file:
